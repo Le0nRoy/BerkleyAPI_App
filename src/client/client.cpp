@@ -24,7 +24,7 @@ void Client::run()
     while (true)
     {
         std::cout << ">> ";
-        std::cin >> str;
+        std::getline(std::cin, str);
 
         if (str == "exit")
         {
