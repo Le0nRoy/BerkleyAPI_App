@@ -37,7 +37,6 @@ int Socket::closeConnection(int &fd)
 
 Socket::~Socket()
 {
-    // TODO add check of all sockets in array
     if (serverFd > 0)
     {
         closeConnection(serverFd);

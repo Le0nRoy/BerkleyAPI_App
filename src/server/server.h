@@ -8,6 +8,7 @@
 #include "../socket.h"
 
 #include <string>
+#include <cstring>
 
 class Server : public Socket
 {
@@ -16,17 +17,22 @@ public:
     {
         this->port = port;
         this->conType = conType;
+        memset(clientFds, 0, sizeof(int) * maxClients);
     }
 
     void startServer();
+    ~Server();
 
 private:
     int backlog = 10;
+    static const int maxClients = 10;
+    int clientFds[maxClients];
+
+    unsigned long long parseMessage();
+
 protected:
     int createConnection() override;
 
-private:
-    unsigned long long parseMessage();
 };
 
 

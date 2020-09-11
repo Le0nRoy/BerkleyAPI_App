@@ -14,6 +14,7 @@
 
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <libnet.h>
 
 void Server::startServer()
 {
@@ -22,77 +23,112 @@ void Server::startServer()
         return;
     }
 
-//    int fd1, fd2;
-//    fd_set rfds;
-//    struct timeval timeout;
-//    timeout.tv_sec = 1;   // 1 second timeout
-//    timeout.tv_usec = 0;
-//    FD_ZERO(&rfds);
-//    FD_SET(fd1, &rfds);
-//    FD_SET(fd2, &rfds);
-//    int rc = select(max(fd1, fd2) + 1, &rfds, NULL, NULL, &timeout);
-//    if (rc == 0) // timeout
-//    if (rc > 0)
-//    {
-//        if (FD_ISSET(fd1, &rfds))
-//        {
-//            // Data available to read on fd1
-//        }
-//        if (FD_ISSET(fd2, &rfds))
-//        {
-//            // Data available to read on fd2
-//        }
-//    }
-//    if (rc < 0) // error
-
+    bool hasConnected = false;
     bool serverRunning = true;
+    int maxFd;
+    int i;
+    int connectFd;
+    unsigned long long res;
+    struct sockaddr_in cliaddr;
+    socklen_t cliaddrlen;
+    fd_set readfds;
+
     while (serverRunning)
     {
-        // FIXME here will be problems
-        // TODO listen to multiple sockets
-        unsigned long long res = 0;
-        // TODO listen to connection
-        struct sockaddr_in cliaddr;
-        socklen_t cliaddrlen = sizeof(cliaddr);
-        int connectFd = accept(serverFd, (struct sockaddr *) &cliaddr, &cliaddrlen);
+        FD_ZERO(&readfds);
+        FD_SET(serverFd, &readfds);
 
-        if (connectFd < 0)
+        res = 0;
+        maxFd = serverFd;
+
+        for (i = 0; i < maxClients; ++i)
         {
-            logger->error("Failed to accept connection");
-            logger->error(strerror(errno));
-            closeConnection(serverFd);
-            break;
-        }
-        else
-        {
-            logger->info("Accepted connection from client");
-            // TODO add ip:port
+            connectFd = clientFds[i];
+            if (connectFd > 0)
+            {
+                FD_SET(connectFd, &readfds);
+            }
+            if (connectFd > maxFd)
+            {
+                maxFd = connectFd;
+            }
         }
 
-        // TODO choose correct socket
-        getMessage(connectFd);
-        try
+        res = select(maxFd + 1, &readfds, nullptr, nullptr, nullptr);
+
+        if ((res < 0) && (errno != EINTR))
         {
-            res = parseMessage();
-        }
-        catch (NoNumbersException &e)
-        {
-            sendMessage(connectFd, buffer);
-        }
-        catch (ExitMessageException &e)
-        {
-            closeConnection(connectFd);
-            continue;
-        }
-        catch (std::exception &e)
-        {
-            logger->error("Unexpected exception occurred.");
-            logger->error(e.what());
-            serverRunning = false;
-            break;
+            logger->error("Failed to select socket");
         }
 
-        sendMessage(connectFd, std::to_string(res));
+        if (FD_ISSET(serverFd, &readfds))
+        {
+            connectFd = accept(serverFd, (struct sockaddr *)&cliaddr, &cliaddrlen);
+            if (connectFd < 0)
+            {
+                logger->error("Failed to accept connection");
+                logger->error(strerror(errno));
+//                closeConnection(serverFd);
+                break;
+            }
+            else
+            {
+                for (i = 0; i < maxClients; ++i)
+                {
+                    if (clientFds[i] == 0)
+                    {
+                        clientFds[i] = connectFd;
+                        hasConnected = true;
+                        logger->info("Accepted connection from client");
+                        logger->info("ip: " + std::string(inet_ntoa(cliaddr.sin_addr)));
+                        logger->info("port: " + std::to_string(ntohs(cliaddr.sin_port)));
+                        break;
+                    }
+                }
+                if (!hasConnected)
+                {
+                    // TODO log if couldn't add to connections
+                    logger->error("Failed to ");
+                }
+            }
+        }
+
+        for (i = 0; i < maxClients; ++i)
+        {
+            connectFd = clientFds[i];
+            if (FD_ISSET(connectFd, &readfds))
+            {
+                getMessage(connectFd);
+                try
+                {
+                    res = parseMessage();
+                }
+                catch (NoNumbersException &e)
+                {
+                    sendMessage(connectFd, buffer);
+                    continue;
+                }
+                catch (ExitMessageException &e)
+                {
+                    closeConnection(connectFd);
+                    clientFds[i] = 0;
+                    logger->info("Client has disconnected");
+                    // FIXME need map with addresses and FDs
+//                    logger->info("ip: " + std::string(inet_ntoa(cliaddr.sin_addr)));
+//                    logger->info("port: " + std::to_string(ntohs(cliaddr.sin_port)));
+                    continue;
+                }
+                catch (std::exception &e)
+                {
+                    logger->error("Unexpected exception occurred.");
+                    logger->error(e.what());
+                    serverRunning = false;
+                    break;
+                }
+
+                sendMessage(connectFd, std::to_string(res));
+            }
+        }
     }
 
     closeConnection(serverFd);
@@ -107,12 +143,7 @@ unsigned long long Server::parseMessage()
     bool noNumbers = true;
     std::string str(buffer);
 
-    if (str.empty())
-    {
-        return -1;
-    }
-
-    if (str == "exit")
+    if (str.empty() || str == "exit")
     {
         throw ExitMessageException();
     }
@@ -168,7 +199,8 @@ int Server::createConnection()
         close(serverFd);
         return EXIT_FAILURE;
     }
-    if (listen(serverFd, backlog) == -1) {
+    if (listen(serverFd, backlog) == -1)
+    {
         logger->error("Error while listening to socket.");
         logger->error(strerror(errno));
         close(serverFd);
@@ -178,4 +210,15 @@ int Server::createConnection()
     logger->info("Server started successfully.");
 
     return EXIT_SUCCESS;
+}
+
+Server::~Server()
+{
+    for (int & clientFd : clientFds)
+    {
+        if (clientFd != 0)
+        {
+            closeConnection(clientFd);
+        }
+    }
 }

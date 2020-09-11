@@ -6,35 +6,36 @@
 
 // TODO Task:
 //  1. Client sends message from console to server                      OK
-//  2. Server receives that message and parses it:
-//  2.1. Finds all numbers in it
-//  2.2 Counts sum of all numbers
-//  3. Sends sum back to client
-//  3.1. If no numbers in client message,
-//  server sends message back to client
+//  2. Server receives that message and parses it:                      OK
+//  2.1. Finds all numbers in it                                        OK
+//  2.2 Counts sum of all numbers                                       OK
+//  3. Sends sum back to client                                         OK
+//  3.1. If no numbers in client message,                               OK
+//  server sends message back to client                                 OK
 //  4. Client and server should support next protocols:
-//  4.1. TCP
+//  4.1. TCP                                                            OK
 //  4.2. UDP
 //  5. Server should correctly serve multiple clients on both protocols
 //  6. Client should be able to chose protocol on start
-//  7. Client should be able to send multiple messages
-//  without restart or reconnection
+//  7. Client should be able to send multiple messages                  OK
+//  without restart or reconnection                                     OK
 
 // TODO Debug client
 //  1. Connect to server                        OK
-//  2. Send message with numbers
-//  2.1. Send message with 0
-//  2.2. Send message with words and numbers
-//  3. Send message without numbers
-//  3.1. Send empty message
-//  4. Send "exit"
+//  2. Send message with numbers                OK
+//  2.1. Send message with 0                    OK
+//  2.2. Send message with words and numbers    OK
+//  3. Send message without numbers             OK
+//  3.1. Send empty message (message not being sent, console just goes to next string)
+//  4. Send "exit"                              OK
 
 // TODO Debug server
 //  1. Start server                             OK
 //  2. Get connection from client               OK
-//  3. Get multiple messages from client
-//  4. Close connection with client
-//  5. Get new connection from client
+//  3. Get multiple messages from client        OK
+//  4. Close connection with client             OK
+//  5. Get new connection from client           OK
+//  6. Get multiple connections                 OK
 //  Optional: Write messages in logs
 
 #define USAGE \
