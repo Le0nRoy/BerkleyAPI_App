@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <cstdio>
 #include <string>
+#include <netinet/in.h>
 #include "logger/logger.h"
 
 enum connectionType
@@ -32,6 +33,9 @@ protected:
     int port;
     connectionType conType;
     char buffer[buflen];
+    // For UDP
+    struct sockaddr_in sa;
+
 
     int sendMessage(const int &fd, const std::string &message);
     int getMessage(const int &fd);

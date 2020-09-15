@@ -77,7 +77,7 @@ int main(int argv, char **argc)
     else if (protocolStr == "UDP")
     {
         con = UDP;
-        return 1;
+//        return 1;
     }
     else
     {

@@ -10,18 +10,51 @@
 
 int Socket::sendMessage(const int &fd, const std::string &message)
 {
-    return write(fd, message.data(), message.size());
+    if (conType == TCP)
+    {
+        return write(fd, message.data(), message.size());
+    }
+    else if (conType == UDP)
+    {
+        return sendto(serverFd, buffer, strlen(buffer), 0,
+                      (struct sockaddr *)&sa, sizeof sa);
+    }
 }
 
 int Socket::getMessage(const int &fd)
 {
-    ssize_t rcount = read(fd, buffer, buflen);
-    if (rcount == -1)
+    ssize_t recsize = 0;
+
+    if (conType == TCP)
     {
-        return rcount;
+        recsize = read(fd, buffer, buflen);
     }
-    buffer[rcount] = '\0';
+    else if (conType == UDP)
+    {
+        socklen_t fromlen = sizeof sa;
+
+        recsize = read(fd, buffer, buflen);
+//        recsize = recvfrom(serverFd, (void *)buffer, sizeof buffer, 0,
+//                           (struct sockaddr *)&sa, &fromlen);
+    }
+
+    if (recsize < 0)
+    {
+        return recsize;
+    }
+    buffer[recsize] = '\0';
     return 0;
+}
+
+int Socket::createConnection()
+{
+    serverFd = socket(AF_INET, conType, 0);
+    if (serverFd == -1)
+    {
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
 
 int Socket::closeConnection(int &fd)
@@ -41,15 +74,4 @@ Socket::~Socket()
     {
         closeConnection(serverFd);
     }
-}
-
-int Socket::createConnection()
-{
-    serverFd = socket(AF_INET, conType, 0);
-    if (serverFd == -1)
-    {
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
 }

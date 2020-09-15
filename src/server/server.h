@@ -24,11 +24,13 @@ public:
     ~Server();
 
 private:
-    int backlog = 10;
     static const int maxClients = 10;
+
+    int backlog = 10;
     int clientFds[maxClients];
 
     unsigned long long parseMessage();
+    void readAndParseMessage(int &fd);
 
 protected:
     int createConnection() override;

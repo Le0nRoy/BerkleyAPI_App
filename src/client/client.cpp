@@ -11,15 +11,16 @@
 #include <cstring>
 #include <unistd.h>
 
+/// Good
 void Client::run()
 {
-    std::string str;
-    int res;
-
     if (createConnection() == EXIT_FAILURE)
     {
         return;
     }
+
+    std::string str;
+    int res;
 
     while (true)
     {
@@ -64,41 +65,46 @@ void Client::run()
     logger->info("Closing client...");
 }
 
-/// Good
+// TODO check UDP
+/// Good for TCP
 int Client::createConnection()
 {
     int res;
-    struct sockaddr_in sa;
 
     res = Socket::createConnection();
-    if (res == EXIT_FAILURE)
+    if (res != EXIT_SUCCESS)
     {
         logger->error("Failed to create socket.");
         logger->error(strerror(errno));
-        return EXIT_FAILURE;
+        return res;
     }
 
     memset(&sa, 0, sizeof sa);
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
     res = inet_pton(AF_INET, ip.data(), &sa.sin_addr);
-    if (res < 0)
-    {
-        logger->error("Failed to parse IP.");
-        logger->error(strerror(errno));
-        return EXIT_FAILURE;
-    }
 
-    if (connect(serverFd, (sockaddr *)&sa, sizeof sa) == -1)
+    if (conType == TCP)
     {
-        logger->error("Failed to create connection with " + ip + ":" +
-                      std::to_string(port)
-                     );
-        logger->error(strerror(errno));
-        close(serverFd);
-        return EXIT_FAILURE;
-    }
+        if (res < 0)
+        {
+            logger->error("Failed to parse IP.");
+            logger->error(strerror(errno));
+            return res;
+        }
 
-    logger->info("Connection established!");
+        res = connect(serverFd, (sockaddr *)&sa, sizeof sa);
+        if (res < 0)
+        {
+            logger->error("Failed to create connection with " + ip + ":" +
+                          std::to_string(port)
+                         );
+            logger->error(strerror(errno));
+            close(serverFd);
+            return res;
+        }
+
+        logger->info("Connection established!");
+    }
     return EXIT_SUCCESS;
 }

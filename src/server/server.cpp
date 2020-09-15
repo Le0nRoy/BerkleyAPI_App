@@ -18,7 +18,7 @@
 
 void Server::startServer()
 {
-    if (createConnection() == EXIT_FAILURE)
+    if (createConnection() != EXIT_SUCCESS)
     {
         return;
     }
@@ -29,104 +29,101 @@ void Server::startServer()
     int i;
     int connectFd;
     unsigned long long res;
-    struct sockaddr_in cliaddr;
     socklen_t cliaddrlen;
     fd_set readfds;
 
     while (serverRunning)
     {
-        FD_ZERO(&readfds);
-        FD_SET(serverFd, &readfds);
-
-        res = 0;
-        maxFd = serverFd;
-
-        for (i = 0; i < maxClients; ++i)
+        if (conType == TCP)
         {
-            connectFd = clientFds[i];
-            if (connectFd > 0)
-            {
-                FD_SET(connectFd, &readfds);
-            }
-            if (connectFd > maxFd)
-            {
-                maxFd = connectFd;
-            }
-        }
+            FD_ZERO(&readfds);
+            FD_SET(serverFd, &readfds);
 
-        res = select(maxFd + 1, &readfds, nullptr, nullptr, nullptr);
+            res = 0;
+            maxFd = serverFd;
 
-        if ((res < 0) && (errno != EINTR))
-        {
-            logger->error("Failed to select socket");
-        }
-
-        if (FD_ISSET(serverFd, &readfds))
-        {
-            connectFd = accept(serverFd, (struct sockaddr *)&cliaddr, &cliaddrlen);
-            if (connectFd < 0)
+            for (i = 0; i < maxClients; ++i)
             {
-                logger->error("Failed to accept connection");
-                logger->error(strerror(errno));
-//                closeConnection(serverFd);
-                break;
-            }
-            else
-            {
-                for (i = 0; i < maxClients; ++i)
+                connectFd = clientFds[i];
+                if (connectFd > 0)
                 {
-                    if (clientFds[i] == 0)
+                    FD_SET(connectFd, &readfds);
+                }
+                if (connectFd > maxFd)
+                {
+                    maxFd = connectFd;
+                }
+            }
+
+            res = select(maxFd + 1, &readfds, nullptr, nullptr, nullptr);
+
+            if ((res < 0) && (errno != EINTR))
+            {
+                logger->error("Failed to select socket");
+            }
+
+            if (FD_ISSET(serverFd, &readfds))
+            {
+                connectFd = accept(serverFd, (struct sockaddr *)&sa, &cliaddrlen);
+                if (connectFd < 0)
+                {
+                    logger->error("Failed to accept connection");
+                    logger->error(strerror(errno));
+                    break;
+                }
+                else
+                {
+                    for (i = 0; i < maxClients; ++i)
                     {
-                        clientFds[i] = connectFd;
-                        hasConnected = true;
-                        logger->info("Accepted connection from client");
-                        logger->info("ip: " + std::string(inet_ntoa(cliaddr.sin_addr)));
-                        logger->info("port: " + std::to_string(ntohs(cliaddr.sin_port)));
+                        if (clientFds[i] == 0)
+                        {
+                            clientFds[i] = connectFd;
+                            hasConnected = true;
+                            logger->info("Accepted connection from client.");
+                            break;
+                        }
+                    }
+                    if (!hasConnected)
+                    {
+                        logger->error("Failed to add client to active connections.");
+                    }
+                    logger->info("ip: " + std::string(inet_ntoa(sa.sin_addr)));
+                    logger->info("port: " + std::to_string(ntohs(sa.sin_port)));
+                }
+            }
+
+            for (i = 0; i < maxClients; ++i)
+            {
+                connectFd = clientFds[i];
+                if (FD_ISSET(connectFd, &readfds))
+                {
+                    try
+                    {
+                        readAndParseMessage(connectFd);
+                    }
+                    catch (std::exception &e)
+                    {
+                        logger->error("Unexpected exception occurred.");
+                        logger->error(e.what());
+                        serverRunning = false;
                         break;
                     }
                 }
-                if (!hasConnected)
-                {
-                    // TODO log if couldn't add to connections
-                    logger->error("Failed to ");
-                }
             }
         }
 
-        for (i = 0; i < maxClients; ++i)
+        if (conType == UDP)
         {
-            connectFd = clientFds[i];
-            if (FD_ISSET(connectFd, &readfds))
+            try
             {
-                getMessage(connectFd);
-                try
-                {
-                    res = parseMessage();
-                }
-                catch (NoNumbersException &e)
-                {
-                    sendMessage(connectFd, buffer);
-                    continue;
-                }
-                catch (ExitMessageException &e)
-                {
-                    closeConnection(connectFd);
-                    clientFds[i] = 0;
-                    logger->info("Client has disconnected");
-                    // FIXME need map with addresses and FDs
-//                    logger->info("ip: " + std::string(inet_ntoa(cliaddr.sin_addr)));
-//                    logger->info("port: " + std::to_string(ntohs(cliaddr.sin_port)));
-                    continue;
-                }
-                catch (std::exception &e)
-                {
-                    logger->error("Unexpected exception occurred.");
-                    logger->error(e.what());
-                    serverRunning = false;
-                    break;
-                }
-
-                sendMessage(connectFd, std::to_string(res));
+                readAndParseMessage(serverFd);
+            }
+            catch (std::exception &e)
+            {
+                logger->error("Unexpected exception occurred.");
+                logger->error(e.what());
+                serverRunning = false;
+                break;
             }
         }
     }
@@ -143,7 +140,7 @@ unsigned long long Server::parseMessage()
     bool noNumbers = true;
     std::string str(buffer);
 
-    if (str.empty() || str == "exit")
+    if (conType == TCP && (str.empty() || str == "exit"))
     {
         throw ExitMessageException();
     }
@@ -176,14 +173,13 @@ unsigned long long Server::parseMessage()
 int Server::createConnection()
 {
     int res;
-    struct sockaddr_in sa;
 
     res = Socket::createConnection();
-    if (res == EXIT_FAILURE)
+    if (res != EXIT_SUCCESS)
     {
         logger->error("Failed to create socket.");
         logger->error(strerror(errno));
-        return EXIT_FAILURE;
+        return res;
     }
 
     memset(&sa, 0, sizeof sa);
@@ -192,19 +188,24 @@ int Server::createConnection()
     sa.sin_port = htons(port);
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(serverFd, (struct sockaddr *)&sa, sizeof sa) == -1)
+    res = bind(serverFd, (struct sockaddr *)&sa, sizeof sa);
+    if (res < 0)
     {
         logger->error("Error binding socket to address.");
         logger->error(strerror(errno));
         close(serverFd);
-        return EXIT_FAILURE;
+        return res;
     }
-    if (listen(serverFd, backlog) == -1)
+    if (conType == TCP)
     {
-        logger->error("Error while listening to socket.");
-        logger->error(strerror(errno));
-        close(serverFd);
-        return EXIT_FAILURE;
+        res = listen(serverFd, backlog);
+        if (res < 0)
+        {
+            logger->error("Error while listening to socket.");
+            logger->error(strerror(errno));
+            close(serverFd);
+            return res;
+        }
     }
 
     logger->info("Server started successfully.");
@@ -221,4 +222,32 @@ Server::~Server()
             closeConnection(clientFd);
         }
     }
+}
+
+void Server::readAndParseMessage(int &fd)
+{
+    unsigned long long res = 0;
+
+    getMessage(fd);
+    try
+    {
+        res = parseMessage();
+    }
+    catch (NoNumbersException &e)
+    {
+        sendMessage(fd, buffer);
+        return;
+    }
+    catch (ExitMessageException &e)
+    {
+        closeConnection(fd);
+        fd = 0;
+        logger->info("Client has disconnected");
+        // FIXME need map with addresses and FDs
+//                    logger->info("ip: " + std::string(inet_ntoa(sa.sin_addr)));
+//                    logger->info("port: " + std::to_string(ntohs(sa.sin_port)));
+        return;
+    }
+
+    sendMessage(fd, std::to_string(res));
 }
